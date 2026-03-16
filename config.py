@@ -211,12 +211,79 @@ EVAL_PREFIX_LEN:    int = 20    # Tokens used as prefix for completion tasks
 EVAL_CONTINUATION_LEN: int = 120  # Tokens generated for prefix completion
 
 # ---------------------------------------------------------------------------
+# Cosmopedia-v2 run — fully isolated paths so TinyStories artifacts are safe
+#
+# Why separate paths?
+#   - Different tokenizer (trained on cosmopedia vocabulary)
+#   - Different checkpoint files (fresh model, not a continuation)
+#   - Keeps experiments cleanly separated on Drive
+# ---------------------------------------------------------------------------
+
+COSMO_DATASET_NAME:   str = "HuggingFaceTB/smollm-corpus"
+COSMO_DATASET_SUBSET: str = "cosmopedia-v2"
+
+# Number of examples to stream and save locally.
+# 500k cosmopedia docs ≈ 400-600M tokens — good for ~50k training steps on T4.
+COSMO_DATA_SIZE: int = 500_000
+
+# Val / test split sizes (held out from the streamed examples)
+COSMO_VAL_SIZE:  int = 5_000
+COSMO_TEST_SIZE: int = 5_000
+
+# Isolated data, tokenizer, and checkpoint directories for this run
+COSMO_DATA_DIR:       str = os.path.join(BASE, "data",        "cosmopedia")
+COSMO_TOKENIZER_DIR:  str = os.path.join(BASE, "tokenizer",   "cosmopedia")
+COSMO_CHECKPOINT_DIR: str = os.path.join(BASE, "checkpoints", "cosmopedia")
+
+# Tokenizer files
+COSMO_TOKENIZER_VOCAB:  str = os.path.join(COSMO_TOKENIZER_DIR, "vocab.json")
+COSMO_TOKENIZER_MERGES: str = os.path.join(COSMO_TOKENIZER_DIR, "merges.txt")
+
+# Raw text splits
+COSMO_TRAIN_TXT: str = os.path.join(COSMO_DATA_DIR, "train.txt")
+COSMO_VAL_TXT:   str = os.path.join(COSMO_DATA_DIR, "val.txt")
+COSMO_TEST_TXT:  str = os.path.join(COSMO_DATA_DIR, "test.txt")
+
+# Tokenized binary splits
+COSMO_TRAIN_TOKENS: str = os.path.join(COSMO_DATA_DIR, "train_tokens.npy")
+COSMO_VAL_TOKENS:   str = os.path.join(COSMO_DATA_DIR, "val_tokens.npy")
+COSMO_TEST_TOKENS:  str = os.path.join(COSMO_DATA_DIR, "test_tokens.npy")
+
+# Checkpoints
+COSMO_CKPT:       str = os.path.join(COSMO_CHECKPOINT_DIR, "cosmo_checkpoint.pt")
+COSMO_FINAL_CKPT: str = os.path.join(COSMO_CHECKPOINT_DIR, "cosmo_final.pt")
+
+# ---------------------------------------------------------------------------
+# Cosmopedia training hyperparameters
+#
+# Key differences vs TinyStories run:
+#   - More steps (50k) — cosmopedia text is harder to model than simple stories
+#   - Warmup (500 steps) — helps stability at the start of longer runs
+#   - Grad clip (1.0)    — standard for transformers, prevents gradient spikes
+# ---------------------------------------------------------------------------
+
+COSMO_LR:             float = 3e-4
+COSMO_WEIGHT_DECAY:   float = 0.1
+COSMO_BATCH_SIZE:     int   = 16
+COSMO_MAX_STEPS:      int   = 50_000
+COSMO_WARMUP_STEPS:   int   = 500      # linear LR warmup before cosine decay
+COSMO_GRAD_CLIP:      float = 1.0      # max gradient norm (0 = disabled)
+COSMO_EVAL_INTERVAL:  int   = 500
+COSMO_SAVE_INTERVAL:  int   = 1_000
+COSMO_EVAL_BATCHES:   int   = 50
+COSMO_GRAD_ACCUM_STEPS: int = 1        # increase to 2 if VRAM is tight
+
+# ---------------------------------------------------------------------------
 # Utility: create all directories that must exist before any run
 # ---------------------------------------------------------------------------
 
 def make_dirs() -> None:
     """Create all required project directories (safe to call repeatedly)."""
-    for d in [DATA_DIR, TOKENIZER_DIR, CHECKPOINT_DIR, LOG_DIR, CONFIG_DIR]:
+    dirs = [
+        DATA_DIR, TOKENIZER_DIR, CHECKPOINT_DIR, LOG_DIR, CONFIG_DIR,
+        COSMO_DATA_DIR, COSMO_TOKENIZER_DIR, COSMO_CHECKPOINT_DIR,
+    ]
+    for d in dirs:
         os.makedirs(d, exist_ok=True)
 
 
