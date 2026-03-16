@@ -1,0 +1,24 @@
+# Core ML framework
+torch>=2.0.0
+
+# HuggingFace ecosystem
+transformers>=4.38.0
+datasets>=2.18.0
+tokenizers>=0.15.0
+peft>=0.10.0
+huggingface_hub>=0.22.0
+
+# Quantization (INT8 / INT4)
+# WARNING: bitsandbytes requires CUDA — install only on GPU machines/Colab
+bitsandbytes>=0.43.0
+
+# Numerics & data
+numpy>=1.24.0
+pandas>=2.0.0
+
+# Visualisation
+matplotlib>=3.7.0
+
+# Progress bars & experiment tracking
+tqdm>=4.66.0
+wandb>=0.16.0  # optional — only needed if you use W&B logging
