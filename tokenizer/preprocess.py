@@ -35,12 +35,12 @@ import config as cfg
 
 
 def train_tokenizer(
-    train_file: str = None,
+    train_file: "str | list[str]" = None,
     save_dir:   str = None,
     vocab_size: int = None,
 ) -> ByteLevelBPETokenizer:
     """
-    Train a Byte-Level BPE tokenizer from scratch on a raw text file.
+    Train a Byte-Level BPE tokenizer from scratch on one or more raw text files.
 
     BPE (Byte-Pair Encoding) starts with individual bytes as the vocabulary
     and iteratively merges the most frequent adjacent pair until reaching
@@ -55,7 +55,10 @@ def train_tokenizer(
         <mask>  — future use (e.g. masked language modelling)
 
     Args:
-        train_file: path to the raw training text file (defaults to cfg.TRAIN_TXT)
+        train_file: path (str) or list of paths to raw text files. Passing
+                    multiple files lets the tokenizer learn vocabulary from all
+                    sources — e.g. pretraining corpus + SFT corpus combined.
+                    Defaults to cfg.TRAIN_TXT.
         save_dir:   directory to save vocab.json and merges.txt (defaults to cfg.TOKENIZER_DIR)
         vocab_size: BPE vocabulary size (defaults to cfg.VOCAB_SIZE)
 
@@ -66,12 +69,19 @@ def train_tokenizer(
     save_dir   = save_dir   or cfg.TOKENIZER_DIR
     vocab_size = vocab_size or cfg.VOCAB_SIZE
 
+    # Normalise to list so the underlying library always receives a list of files
+    files = [train_file] if isinstance(train_file, str) else list(train_file)
+
     os.makedirs(save_dir, exist_ok=True)
 
     tokenizer = ByteLevelBPETokenizer()
 
+    print(f"Training tokenizer on {len(files)} file(s):")
+    for f in files:
+        print(f"  {f}")
+
     tokenizer.train(
-        files=[train_file],
+        files=files,
         vocab_size=vocab_size,
         min_frequency=2,          # ignore pairs that appear fewer than 2 times
         special_tokens=[

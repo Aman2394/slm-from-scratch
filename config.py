@@ -49,7 +49,6 @@ DATA_DIR:        str = os.path.join(BASE, "data")
 TOKENIZER_DIR:   str = os.path.join(BASE, "tokenizer")
 CHECKPOINT_DIR:  str = os.path.join(BASE, "checkpoints")
 LOG_DIR:         str = os.path.join(BASE, "experiments", "logs")
-CONFIG_DIR:      str = os.path.join(BASE, "config")
 
 # ---------------------------------------------------------------------------
 # Tokenizer file paths
@@ -211,67 +210,124 @@ EVAL_PREFIX_LEN:    int = 20    # Tokens used as prefix for completion tasks
 EVAL_CONTINUATION_LEN: int = 120  # Tokens generated for prefix completion
 
 # ---------------------------------------------------------------------------
-# Cosmopedia-v2 run — fully isolated paths so TinyStories artifacts are safe
+# Medical SLM — fully isolated paths so TinyStories artifacts are safe
 #
 # Why separate paths?
-#   - Different tokenizer (trained on cosmopedia vocabulary)
-#   - Different checkpoint files (fresh model, not a continuation)
-#   - Keeps experiments cleanly separated on Drive
+#   - Different tokenizer (trained on medical vocabulary)
+#   - Different checkpoint files (fresh random init, completely independent model)
+#   - Keeps the medical experiment cleanly separated on Drive
+#
+# Pipeline: medical textbooks → pretrain from scratch → SFT on MedQA/PubMedQA → DPO → HF upload
 # ---------------------------------------------------------------------------
 
-COSMO_DATASET_NAME:   str = "HuggingFaceTB/smollm-corpus"
-COSMO_DATASET_SUBSET: str = "cosmopedia-v2"
+# HuggingFace dataset IDs
+MED_TEXTBOOK_DATASET: str = "epfl-llm/guidelines"    # Clinical guidelines (WHO, CDC, NICE) — used to train Meditron
+MED_MEDQA_DATASET:    str = "medalpaca/medical_meadow_medqa"
+MED_PUBMEDQA_DATASET: str = "pubmed_qa"              # pqa_labeled split — used for SFT
 
-# Number of examples to stream and save locally.
-# 500k cosmopedia docs ≈ 400-600M tokens — good for ~50k training steps on T4.
-COSMO_DATA_SIZE: int = 500_000
+# PubMedQA unlabeled split — used as additional PRETRAINING text (not SFT)
+# pqa_unlabeled has 61k examples with rich biomedical abstract context paragraphs.
+# We extract: question + context paragraphs + long_answer as one document per example.
+MED_PUBMEDQA_PRETRAIN_SUBSET: str = "pqa_unlabeled"
+MED_PUBMEDQA_PRETRAIN_SIZE:   int = 60_000           # nearly all 61k available
 
-# Val / test split sizes (held out from the streamed examples)
-COSMO_VAL_SIZE:  int = 5_000
-COSMO_TEST_SIZE: int = 5_000
+# Number of textbook examples to use for DAPT pretraining corpus
+# ~80k examples ≈ 40–60M tokens — enough for meaningful domain adaptation
+MED_TEXTBOOK_DATA_SIZE: int = 33_000   # epfl-llm/guidelines has ~37,970 total; leaving ~5k as buffer
+MED_VAL_SIZE:           int = 2_000    # Held out from textbook stream
+MED_TEST_SIZE:          int = 2_000    # Total used: 37,000 of 37,970
 
 # Isolated data, tokenizer, and checkpoint directories for this run
-COSMO_DATA_DIR:       str = os.path.join(BASE, "data",        "cosmopedia")
-COSMO_TOKENIZER_DIR:  str = os.path.join(BASE, "tokenizer",   "cosmopedia")
-COSMO_CHECKPOINT_DIR: str = os.path.join(BASE, "checkpoints", "cosmopedia")
+MED_DATA_DIR:        str = os.path.join(BASE, "data",        "medical")
+MED_TOKENIZER_DIR:   str = os.path.join(BASE, "tokenizer",   "medical")
+MED_CHECKPOINT_DIR:  str = os.path.join(BASE, "checkpoints", "medical")
 
 # Tokenizer files
-COSMO_TOKENIZER_VOCAB:  str = os.path.join(COSMO_TOKENIZER_DIR, "vocab.json")
-COSMO_TOKENIZER_MERGES: str = os.path.join(COSMO_TOKENIZER_DIR, "merges.txt")
+MED_TOKENIZER_VOCAB:  str = os.path.join(MED_TOKENIZER_DIR, "vocab.json")
+MED_TOKENIZER_MERGES: str = os.path.join(MED_TOKENIZER_DIR, "merges.txt")
 
-# Raw text splits
-COSMO_TRAIN_TXT: str = os.path.join(COSMO_DATA_DIR, "train.txt")
-COSMO_VAL_TXT:   str = os.path.join(COSMO_DATA_DIR, "val.txt")
-COSMO_TEST_TXT:  str = os.path.join(COSMO_DATA_DIR, "test.txt")
+# Raw text splits (one document per line)
+MED_TRAIN_TXT: str = os.path.join(MED_DATA_DIR, "train.txt")
+MED_VAL_TXT:   str = os.path.join(MED_DATA_DIR, "val.txt")
+MED_TEST_TXT:  str = os.path.join(MED_DATA_DIR, "test.txt")
 
-# Tokenized binary splits
-COSMO_TRAIN_TOKENS: str = os.path.join(COSMO_DATA_DIR, "train_tokens.npy")
-COSMO_VAL_TOKENS:   str = os.path.join(COSMO_DATA_DIR, "val_tokens.npy")
-COSMO_TEST_TOKENS:  str = os.path.join(COSMO_DATA_DIR, "test_tokens.npy")
+# Tokenized binary splits (uint16 numpy arrays, memory-mapped during training)
+MED_TRAIN_TOKENS: str = os.path.join(MED_DATA_DIR, "train_tokens.npy")
+MED_VAL_TOKENS:   str = os.path.join(MED_DATA_DIR, "val_tokens.npy")
+MED_TEST_TOKENS:  str = os.path.join(MED_DATA_DIR, "test_tokens.npy")
+
+# SFT tokenized dataset (pickle of list of token arrays)
+MED_SFT_TOKENS: str = os.path.join(MED_DATA_DIR, "sft_tokens.pkl")
+
+# DPO preference pairs derived from MedQA wrong-option labels (JSONL)
+MED_DPO_DATASET: str = os.path.join(MED_DATA_DIR, "medical_dpo.jsonl")
 
 # Checkpoints
-COSMO_CKPT:       str = os.path.join(COSMO_CHECKPOINT_DIR, "cosmo_checkpoint.pt")
-COSMO_FINAL_CKPT: str = os.path.join(COSMO_CHECKPOINT_DIR, "cosmo_final.pt")
+MED_DAPT_CKPT:       str = os.path.join(MED_CHECKPOINT_DIR, "med_dapt_checkpoint.pt")
+MED_DAPT_FINAL_CKPT: str = os.path.join(MED_CHECKPOINT_DIR, "med_dapt_final.pt")
+MED_SFT_CKPT:        str = os.path.join(MED_CHECKPOINT_DIR, "med_sft_checkpoint.pt")
+MED_SFT_FINAL_CKPT:  str = os.path.join(MED_CHECKPOINT_DIR, "med_sft_final.pt")
+MED_DPO_FINAL_CKPT:  str = os.path.join(MED_CHECKPOINT_DIR, "med_dpo_final.pt")
+
+# HuggingFace Hub repo names (fill in with your username before uploading)
+MED_HF_MODEL_REPO:     str = ""   # e.g. "your-username/medical-slm"
+MED_HF_TOKENIZER_REPO: str = ""   # e.g. "your-username/medical-slm-tokenizer"
 
 # ---------------------------------------------------------------------------
-# Cosmopedia training hyperparameters
+# Medical Pretraining hyperparameters
 #
-# Key differences vs TinyStories run:
-#   - More steps (50k) — cosmopedia text is harder to model than simple stories
-#   - Warmup (500 steps) — helps stability at the start of longer runs
-#   - Grad clip (1.0)    — standard for transformers, prevents gradient spikes
+# Fresh random initialisation — no weights transferred from TinyStories or any other model.
+# The medical tokenizer has a different vocabulary, so this is a purpose-built model.
+#   - LR 1e-4 with warmup → cosine decay (standard for transformer pretraining)
+#   - block_size overridden to 512 in notebook (medical text is longer than stories)
 # ---------------------------------------------------------------------------
 
-COSMO_LR:             float = 3e-4
-COSMO_WEIGHT_DECAY:   float = 0.1
-COSMO_BATCH_SIZE:     int   = 16
-COSMO_MAX_STEPS:      int   = 50_000
-COSMO_WARMUP_STEPS:   int   = 500      # linear LR warmup before cosine decay
-COSMO_GRAD_CLIP:      float = 1.0      # max gradient norm (0 = disabled)
-COSMO_EVAL_INTERVAL:  int   = 500
-COSMO_SAVE_INTERVAL:  int   = 1_000
-COSMO_EVAL_BATCHES:   int   = 50
-COSMO_GRAD_ACCUM_STEPS: int = 1        # increase to 2 if VRAM is tight
+MED_DAPT_LR:            float = 1e-4   # Peak LR for medical pretraining
+MED_DAPT_WEIGHT_DECAY:  float = 0.1
+MED_DAPT_BATCH_SIZE:    int   = 16
+MED_DAPT_MAX_STEPS:     int   = 20_000
+MED_DAPT_WARMUP_STEPS:  int   = 300    # Shorter warmup (weights already warm from TinyStories pretraining)
+MED_DAPT_GRAD_CLIP:     float = 1.0
+MED_DAPT_EVAL_INTERVAL: int   = 500
+MED_DAPT_SAVE_INTERVAL: int   = 1_000
+MED_DAPT_EVAL_BATCHES:  int   = 50
+MED_DAPT_GRAD_ACCUM_STEPS: int = 1     # Increase to 2 if block_size=512 causes OOM
+
+# ---------------------------------------------------------------------------
+# Medical SFT hyperparameters
+#
+# Fine-tunes on MedQA (USMLE-style) + PubMedQA (research Q&A).
+# Loss is masked to response tokens only (question/options are not trained on).
+# ---------------------------------------------------------------------------
+
+MED_SFT_LR:            float = 3e-5   # Standard SFT: 10× lower than DAPT LR
+MED_SFT_WEIGHT_DECAY:  float = 0.01
+MED_SFT_BATCH_SIZE:    int   = 16
+MED_SFT_MAX_STEPS:     int   = 5_000  # More steps than TinyStories SFT (harder domain)
+MED_SFT_EVAL_INTERVAL: int   = 200
+MED_SFT_SAVE_INTERVAL: int   = 500
+MED_SFT_EVAL_BATCHES:  int   = 50
+MED_SFT_GRAD_ACCUM_STEPS: int = 1
+
+# MedQA / PubMedQA dataset sizes for SFT
+MED_MEDQA_TRAIN_SIZE:    int   = 10_000  # Examples from medalpaca medqa split
+MED_PUBMEDQA_TRAIN_SIZE: int   = 2_000   # Examples from pubmed_qa labeled split
+MED_SFT_MIX_RATIO:       float = 0.8    # Fraction of batches drawn from MedQA vs PubMedQA
+
+# ---------------------------------------------------------------------------
+# Medical DPO hyperparameters
+#
+# Unlike TinyStories DPO (which generates candidates and heuristically ranks them),
+# medical DPO uses *labeled wrong options* from USMLE data as rejected responses.
+# This gives a cleaner supervision signal: chosen = correct answer, rejected = wrong option.
+# ---------------------------------------------------------------------------
+
+MED_DPO_LR:           float = 1e-5
+MED_DPO_WEIGHT_DECAY: float = 0.01
+MED_DPO_BATCH_SIZE:   int   = 8     # Pairs per step (chosen + rejected)
+MED_DPO_MAX_STEPS:    int   = 1_000
+MED_DPO_BETA:         float = 0.1   # KL penalty (same as TinyStories DPO)
+MED_DPO_GRAD_ACCUM_STEPS: int = 2
 
 # ---------------------------------------------------------------------------
 # Utility: create all directories that must exist before any run
@@ -280,8 +336,8 @@ COSMO_GRAD_ACCUM_STEPS: int = 1        # increase to 2 if VRAM is tight
 def make_dirs() -> None:
     """Create all required project directories (safe to call repeatedly)."""
     dirs = [
-        DATA_DIR, TOKENIZER_DIR, CHECKPOINT_DIR, LOG_DIR, CONFIG_DIR,
-        COSMO_DATA_DIR, COSMO_TOKENIZER_DIR, COSMO_CHECKPOINT_DIR,
+        DATA_DIR, TOKENIZER_DIR, CHECKPOINT_DIR, LOG_DIR,
+        MED_DATA_DIR, MED_TOKENIZER_DIR, MED_CHECKPOINT_DIR,
     ]
     for d in dirs:
         os.makedirs(d, exist_ok=True)

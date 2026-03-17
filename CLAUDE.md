@@ -20,7 +20,7 @@ slm-from-scratch/
 ├── requirements.txt
 ├── tokenizer/                 # Custom BPE tokenizer, trained from scratch
 ├── data/                      # Raw + tokenized data (gitignored, lives on Drive)
-├── datasets/                  # PyTorch Dataset classes for pretrain/SFT/DPO
+├── loaders/                   # PyTorch Dataset classes for pretrain/SFT/DPO
 ├── model/                     # GPT architecture: attention, MLP, blocks, KV-cache
 ├── training/                  # Training loops, optimizer, scheduler, utils
 ├── generation/                # Inference, sampling strategies, KV-cache inference
